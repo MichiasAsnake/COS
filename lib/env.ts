@@ -3,17 +3,37 @@ import { z } from "zod";
 export const envKeys = [
   "NEXT_PUBLIC_SUPABASE_URL",
   "NEXT_PUBLIC_SUPABASE_ANON_KEY",
+  "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY",
   "SUPABASE_SERVICE_ROLE_KEY",
   "OPENAI_API_KEY",
   "OPENAI_MODEL",
 ] as const;
 
-const RequiredServerEnvSchema = z.object({
+const RawServerEnvSchema = z.object({
   NEXT_PUBLIC_SUPABASE_URL: z.string().url(),
-  NEXT_PUBLIC_SUPABASE_ANON_KEY: z.string().min(1),
+  NEXT_PUBLIC_SUPABASE_ANON_KEY: z.string().min(1).optional(),
+  NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: z.string().min(1).optional(),
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(1),
   OPENAI_API_KEY: z.string().min(1),
   OPENAI_MODEL: z.string().min(1).default("gpt-4.1-mini"),
+});
+
+const RequiredServerEnvSchema = RawServerEnvSchema.superRefine((env, context) => {
+  if (!env.NEXT_PUBLIC_SUPABASE_ANON_KEY && !env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY) {
+    context.addIssue({
+      code: "custom",
+      path: ["NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY"],
+      message: "NEXT_PUBLIC_SUPABASE_ANON_KEY or NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY is required",
+    });
+  }
+}).transform((env) => {
+  const publicKey = env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? "";
+
+  return {
+    ...env,
+    NEXT_PUBLIC_SUPABASE_ANON_KEY: publicKey,
+    NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? publicKey,
+  };
 });
 
 export type ServerEnv = z.infer<typeof RequiredServerEnvSchema>;
@@ -30,9 +50,16 @@ export function getOptionalServerEnv(raw: ServerEnvInput = process.env): Optiona
     return { success: true, data: parsed.data };
   }
 
-  const missing = parsed.error.issues
-    .filter((issue) => issue.code === "invalid_type" && issue.input === undefined)
-    .map((issue) => String(issue.path[0]))
+  const missing = Array.from(
+    new Set([
+      ...parsed.error.issues
+        .filter((issue) => issue.code === "invalid_type" && issue.input === undefined)
+        .map((issue) => String(issue.path[0])),
+      !raw.NEXT_PUBLIC_SUPABASE_ANON_KEY && !raw.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
+        ? "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY"
+        : null,
+    ].filter((key): key is string => Boolean(key))),
+  )
     .filter((key) => key !== "OPENAI_MODEL")
     .sort((a, b) => envKeys.indexOf(a as (typeof envKeys)[number]) - envKeys.indexOf(b as (typeof envKeys)[number]));
 
