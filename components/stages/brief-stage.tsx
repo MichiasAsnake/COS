@@ -9,6 +9,7 @@ interface BriefStageProps {
   projectSlug: string;
   jump: (stage: Stage) => void;
   ping: (msg: string) => void;
+  onWorkspaceMutated: () => void;
 }
 
 type BriefWorkspaceResponse = {
@@ -33,7 +34,7 @@ function asBriefIntelligence(value: unknown): BriefIntelligence | null {
   };
 }
 
-export function BriefStage({ projectSlug, jump, ping }: BriefStageProps) {
+export function BriefStage({ projectSlug, jump, ping, onWorkspaceMutated }: BriefStageProps) {
   const [rawBrief, setRawBrief] = useState("");
   const [intelligence, setIntelligence] = useState<BriefIntelligence | null>(null);
   const [source, setSource] = useState<BriefSource>("empty");
@@ -108,6 +109,7 @@ export function BriefStage({ projectSlug, jump, ping }: BriefStageProps) {
 
       setIntelligence(generated);
       setSource("generated");
+      onWorkspaceMutated();
       ping("Brief Intelligence saved");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Brief agent failed");

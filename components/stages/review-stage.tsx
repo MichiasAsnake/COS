@@ -29,6 +29,7 @@ interface ReviewStageProps {
   projectSlug: string;
   jump: (stage: Stage) => void;
   ping: (msg: string) => void;
+  onWorkspaceMutated: () => void;
 }
 
 function scoreTone(score: number) {
@@ -37,7 +38,7 @@ function scoreTone(score: number) {
   return "low";
 }
 
-export function ReviewStage({ projectSlug, jump, ping }: ReviewStageProps) {
+export function ReviewStage({ projectSlug, jump, ping, onWorkspaceMutated }: ReviewStageProps) {
   const [outputs, setOutputs] = useState<ProductionOutput[]>([]);
   const [selectedOutputId, setSelectedOutputId] = useState("");
   const [review, setReview] = useState<QAReviewOutput | null>(null);
@@ -102,6 +103,7 @@ export function ReviewStage({ projectSlug, jump, ping }: ReviewStageProps) {
       if (!response.ok) throw new Error(data?.error ?? `QA review failed (${response.status})`);
       if (!data?.qaReview) throw new Error("QA review completed without returning review data.");
       setReview(data.qaReview);
+      onWorkspaceMutated();
       ping("QA review completed");
     } catch (err) {
       setError(err instanceof Error ? err.message : "QA review failed");

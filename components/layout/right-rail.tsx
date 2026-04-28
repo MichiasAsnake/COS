@@ -55,11 +55,11 @@ export function RightRail({ feedback, setFeedback, onSendFeedback, agentRuns, ac
       <div className="rail-section feedback-card">
         <div className="rail-head">
           <div className="rail-title">Feedback Loop</div>
-          <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--fg-2)", letterSpacing: "0.06em" }}>VERSIONED</span>
+          <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--fg-2)", letterSpacing: "0.06em" }}>PLANNING LENS</span>
         </div>
         <div style={{ position: "relative", paddingBottom: 30 }}>
-          <div style={{ fontSize: 13, fontWeight: 500, color: "var(--fg-0)" }}>Refine territory outputs</div>
-          <div className="fb-input">Tell the AI what to change or improve.</div>
+          <div style={{ fontSize: 13, fontWeight: 500, color: "var(--fg-0)" }}>Direction feedback lens</div>
+          <div className="fb-input">Pick lenses to guide Direction. Persisted revisions happen in Production feedback actions.</div>
           <div className="fb-chips">
             {FB_OPTIONS.map((c) => (
               <button key={c} className="fb-chip" data-active={feedback.includes(c) ? "true" : "false"} onClick={() => toggle(c)}>
@@ -67,7 +67,7 @@ export function RightRail({ feedback, setFeedback, onSendFeedback, agentRuns, ac
               </button>
             ))}
           </div>
-          <button className="fb-send" title="Apply feedback" onClick={onSendFeedback}>
+          <button className="fb-send" title="Use Production feedback actions" onClick={onSendFeedback}>
             <Icons.arrowR width={14} height={14} />
           </button>
         </div>

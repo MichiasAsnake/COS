@@ -11,6 +11,7 @@ interface DirectionStageProps {
   jump: (stage: Stage) => void;
   ping: (msg: string) => void;
   feedback: string[];
+  onWorkspaceMutated: () => void;
 }
 
 type TerritoryOutput = {
@@ -38,7 +39,7 @@ function normalizeTerritories(payload: DirectionWorkspace): TerritoryOutput[] {
     }));
 }
 
-export function DirectionStage({ projectSlug, jump, ping, feedback }: DirectionStageProps) {
+export function DirectionStage({ projectSlug, jump, ping, feedback, onWorkspaceMutated }: DirectionStageProps) {
   const [selected, setSelected] = useState(0);
   const [territories, setTerritories] = useState<TerritoryOutput[]>([]);
   const [selectedTerritoryId, setSelectedTerritoryId] = useState<string | null>(null);
@@ -101,6 +102,7 @@ export function DirectionStage({ projectSlug, jump, ping, feedback }: DirectionS
       setTerritories(generated);
       setSelected(0);
       setSelectedTerritoryId(null);
+      onWorkspaceMutated();
       ping(`Generated ${generated.length} territories`);
     } catch (generateError) {
       setError(generateError instanceof Error ? generateError.message : "Could not generate territories.");
@@ -126,6 +128,7 @@ export function DirectionStage({ projectSlug, jump, ping, feedback }: DirectionS
       if (!response.ok) throw new Error((await response.json().catch(() => null))?.error ?? "Could not select territory.");
       setSelectedTerritoryId(t.id);
       setTerritories((current) => current.map((territory) => ({ ...territory, status: territory.id === t.id ? "selected" : "draft" })));
+      onWorkspaceMutated();
       ping(`Selected · ${t.title}`);
       jump("production");
     } catch (selectError) {

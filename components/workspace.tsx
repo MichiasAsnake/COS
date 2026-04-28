@@ -112,9 +112,13 @@ export function Workspace({ workspace }: { workspace: ProjectWorkspaceData }) {
     router.refresh();
   }, [ping, project.slug, router]);
 
+  const refreshWorkspace = useCallback(() => {
+    router.refresh();
+  }, [router]);
+
   const onSendFeedback = () => {
-    if (!feedback.length) { ping("Pick a direction first"); return; }
-    ping(`Applied locally · ${feedback.join(" · ")}`);
+    if (!feedback.length) { ping("Pick a feedback lens first"); return; }
+    ping("Use Production feedback actions to create persisted versions");
   };
 
   return (
@@ -134,11 +138,11 @@ export function Workspace({ workspace }: { workspace: ProjectWorkspaceData }) {
           <Topbar projectName={project.name} onShare={handleShare} onRename={handleRename} renamingProject={renamingProject} />
 
           {stage === "overview"   && <OverviewStage project={project} stages={stages} outputs={outputs} progress={progress} statuses={statuses} jump={jump} feedback={feedback} ping={ping} />}
-          {stage === "brief"      && <BriefStage projectSlug={project.slug} jump={jump} ping={ping} />}
-          {stage === "direction"  && <DirectionStage projectSlug={project.slug} jump={jump} ping={ping} feedback={feedback} />}
-          {stage === "production" && <ProductionStage projectSlug={project.slug} jump={jump} ping={ping} />}
-          {stage === "review"     && <ReviewStage projectSlug={project.slug} jump={jump} ping={ping} />}
-          {stage === "export"     && <ExportStage projectSlug={project.slug} jump={jump} ping={ping} />}
+          {stage === "brief"      && <BriefStage projectSlug={project.slug} jump={jump} ping={ping} onWorkspaceMutated={refreshWorkspace} />}
+          {stage === "direction"  && <DirectionStage projectSlug={project.slug} jump={jump} ping={ping} feedback={feedback} onWorkspaceMutated={refreshWorkspace} />}
+          {stage === "production" && <ProductionStage projectSlug={project.slug} jump={jump} ping={ping} onWorkspaceMutated={refreshWorkspace} />}
+          {stage === "review"     && <ReviewStage projectSlug={project.slug} jump={jump} ping={ping} onWorkspaceMutated={refreshWorkspace} />}
+          {stage === "export"     && <ExportStage projectSlug={project.slug} jump={jump} ping={ping} onWorkspaceMutated={refreshWorkspace} />}
         </main>
 
         {rail && (

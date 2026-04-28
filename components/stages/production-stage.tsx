@@ -40,6 +40,7 @@ interface ProductionStageProps {
   projectSlug: string;
   jump: (stage: Stage) => void;
   ping: (msg: string) => void;
+  onWorkspaceMutated: () => void;
 }
 
 function productionOutputs(payload: ProductionWorkspace): ProductionOutput[] {
@@ -102,7 +103,7 @@ function OutputDetails({ output }: { output: ProductionOutput }) {
   );
 }
 
-export function ProductionStage({ projectSlug, jump, ping }: ProductionStageProps) {
+export function ProductionStage({ projectSlug, jump, ping, onWorkspaceMutated }: ProductionStageProps) {
   const [active, setActive] = useState<ProductionOutputType>("copy_system");
   const [outputs, setOutputs] = useState<ProductionOutput[]>([]);
   const [selectedOutputId, setSelectedOutputId] = useState("");
@@ -163,6 +164,7 @@ export function ProductionStage({ projectSlug, jump, ping }: ProductionStageProp
       setOutputs(generated);
       setActive(generated[0].type as ProductionOutputType);
       setSelectedOutputId(generated[0].id);
+      onWorkspaceMutated();
       ping("Production system generated");
     } catch (generateError) {
       setError(generateError instanceof Error ? generateError.message : "Could not generate production system.");
@@ -188,6 +190,7 @@ export function ProductionStage({ projectSlug, jump, ping }: ProductionStageProp
       setOutputs((current) => [...current, payload.revisedOutput!]);
       setActive(payload.revisedOutput.type as ProductionOutputType);
       setSelectedOutputId(payload.revisedOutput.id);
+      onWorkspaceMutated();
       ping(`Feedback applied · ${feedbackType}`);
     } catch (feedbackError) {
       setError(feedbackError instanceof Error ? feedbackError.message : "Could not apply feedback.");

@@ -36,9 +36,10 @@ interface ExportStageProps {
   projectSlug: string;
   jump: (stage: Stage) => void;
   ping: (msg: string) => void;
+  onWorkspaceMutated: () => void;
 }
 
-export function ExportStage({ projectSlug, jump, ping }: ExportStageProps) {
+export function ExportStage({ projectSlug, jump, ping, onWorkspaceMutated }: ExportStageProps) {
   const [exportDoc, setExportDoc] = useState<ExportDocOutput | null>(null);
   const [qaReview, setQaReview] = useState<QAReviewOutput | null>(null);
   const [outputs, setOutputs] = useState<ProductionOutput[]>([]);
@@ -87,6 +88,7 @@ export function ExportStage({ projectSlug, jump, ping }: ExportStageProps) {
       setExportDoc(data.exportDoc);
       setQaReview(data.qaReview ?? qaReview);
       setOutputs(Array.isArray(data.productionOutputs) ? data.productionOutputs : outputs);
+      onWorkspaceMutated();
       ping("Markdown export created");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Markdown export failed");
