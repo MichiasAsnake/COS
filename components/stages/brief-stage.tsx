@@ -17,19 +17,7 @@ type BriefWorkspaceResponse = {
   error?: string;
 };
 
-const SAMPLE_BRIEF = "We are launching the next iteration of the Atlas line for people who value functional honesty over status signaling. The work should feel quietly distinctive, product-led, and built for social and partnerships. Timeline is tight at eight weeks, paid amplification budget is still unclear, and prior lifestyle-heavy launches did not convert as well as expected.";
-
-const SAMPLE_INTELLIGENCE: BriefIntelligence = {
-  audience: "People who value functional honesty over status signaling.",
-  core_insight: "The strongest strategic tension is quiet distinction: the work must feel recognizable without leaning on loud branding.",
-  opportunity: "Use product-led storytelling to prove utility, durability, and considered design instead of aspirational lifestyle cues.",
-  risks: [
-    "The eight-week timeline is aggressive for the asset volume implied.",
-    "Lifestyle imagery underperformed in past launches and could repeat the conversion issue.",
-  ],
-  missing_information: ["Confirmed paid amplification budget", "Final channel priorities", "Production asset count"],
-  recommended_next_step: "Confirm channel and budget assumptions, then generate creative territories.",
-};
+type BriefSource = "empty" | "persisted" | "generated";
 
 function asBriefIntelligence(value: unknown): BriefIntelligence | null {
   if (!value || typeof value !== "object") return null;
@@ -46,9 +34,9 @@ function asBriefIntelligence(value: unknown): BriefIntelligence | null {
 }
 
 export function BriefStage({ projectSlug, jump, ping }: BriefStageProps) {
-  const [rawBrief, setRawBrief] = useState(SAMPLE_BRIEF);
-  const [intelligence, setIntelligence] = useState<BriefIntelligence>(SAMPLE_INTELLIGENCE);
-  const [source, setSource] = useState<"sample" | "persisted" | "generated">("sample");
+  const [rawBrief, setRawBrief] = useState("");
+  const [intelligence, setIntelligence] = useState<BriefIntelligence | null>(null);
+  const [source, setSource] = useState<BriefSource>("empty");
   const [isLoading, setIsLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -58,25 +46,29 @@ export function BriefStage({ projectSlug, jump, ping }: BriefStageProps) {
 
     async function loadBrief() {
       setIsLoading(true);
+      setError(null);
+      setRawBrief("");
+      setIntelligence(null);
+      setSource("empty");
       try {
         const response = await fetch(`/api/projects/${encodeURIComponent(projectSlug)}/brief`, { cache: "no-store" });
         const data = await response.json() as BriefWorkspaceResponse;
         if (!active) return;
 
         if (!response.ok) {
-          setError(data.error ?? "Backend not connected yet; showing sample brief intelligence.");
+          setError(data.error ?? "Brief workspace could not load.");
           return;
         }
 
-        if (data.input?.content) setRawBrief(data.input.content);
+        setRawBrief(data.input?.content ?? "");
         const persisted = asBriefIntelligence(data.output?.content);
         if (persisted) {
           setIntelligence(persisted);
           setSource("persisted");
-          setError(null);
         }
+        setError(null);
       } catch {
-        if (active) setError("Could not load persisted brief intelligence; showing sample data.");
+        if (active) setError("Could not load persisted brief intelligence. Check the backend connection and try again.");
       } finally {
         if (active) setIsLoading(false);
       }
@@ -86,13 +78,16 @@ export function BriefStage({ projectSlug, jump, ping }: BriefStageProps) {
     return () => { active = false; };
   }, [projectSlug]);
 
-  const findings = useMemo(() => [
-    { kind: "insight" as const, tag: "Audience", body: intelligence.audience },
-    { kind: "insight" as const, tag: "Insight", body: intelligence.core_insight },
-    { kind: "insight" as const, tag: "Opportunity", body: intelligence.opportunity },
-    ...intelligence.risks.map((risk) => ({ kind: "risk" as const, tag: "Risk", body: risk })),
-    ...intelligence.missing_information.map((missing) => ({ kind: "missing" as const, tag: "Missing", body: missing })),
-  ], [intelligence]);
+  const findings = useMemo(() => {
+    if (!intelligence) return [];
+    return [
+      { kind: "insight" as const, tag: "Audience", body: intelligence.audience },
+      { kind: "insight" as const, tag: "Insight", body: intelligence.core_insight },
+      { kind: "insight" as const, tag: "Opportunity", body: intelligence.opportunity },
+      ...intelligence.risks.map((risk) => ({ kind: "risk" as const, tag: "Risk", body: risk })),
+      ...intelligence.missing_information.map((missing) => ({ kind: "missing" as const, tag: "Missing", body: missing })),
+    ];
+  }, [intelligence]);
 
   async function parseBrief() {
     setIsSubmitting(true);
@@ -131,7 +126,7 @@ export function BriefStage({ projectSlug, jump, ping }: BriefStageProps) {
         </div>
         <div className="next-action">
           <span className="next-label">Recommended next</span>
-          <button className="btn primary" onClick={() => jump("direction")}>
+          <button className="btn primary" onClick={() => jump("direction")} disabled={!intelligence}>
             Continue to Direction <Icons.arrowR width={14} height={14} />
           </button>
         </div>
@@ -141,7 +136,7 @@ export function BriefStage({ projectSlug, jump, ping }: BriefStageProps) {
         <div className="panel">
           <div className="panel-head">
             <h3>Raw Brief</h3>
-            <span className="status-pill" data-tone={source === "sample" ? "warn" : "ok"}>{isLoading ? "Loading" : source}</span>
+            <span className="status-pill" data-tone={rawBrief.trim() ? "ok" : "warn"}>{isLoading ? "Loading" : rawBrief.trim() ? "saved input" : "empty"}</span>
           </div>
           <textarea
             className="brief-input"
@@ -161,30 +156,36 @@ export function BriefStage({ projectSlug, jump, ping }: BriefStageProps) {
         <div className="panel">
           <div className="panel-head">
             <h3>System Findings</h3>
-            <span className="status-pill" data-tone={source === "sample" ? "warn" : "ok"}>{source === "sample" ? "sample" : "saved"}</span>
+            <span className="status-pill" data-tone={intelligence ? "ok" : "warn"}>{isLoading ? "loading" : intelligence ? source : "empty"}</span>
           </div>
-          <div className="findings">
-            {findings.map((finding, index) => (
-              <div key={`${finding.tag}-${index}`} className="finding" data-kind={finding.kind}>
-                <span className="finding-tag">{finding.tag}</span>
-                <div className="finding-body"><b>{finding.body}</b></div>
-              </div>
-            ))}
-            <div className="finding" data-kind="insight">
-              <span className="finding-tag">Next</span>
-              <div className="finding-body">
-                <b>{intelligence.recommended_next_step}</b>{" "}
-                <button className="btn sm" style={{ marginTop: 6 }} onClick={() => ping("Drafting clarification request…")}>
-                  Request clarification
-                </button>
+          {intelligence ? (
+            <div className="findings">
+              {findings.map((finding, index) => (
+                <div key={`${finding.tag}-${index}`} className="finding" data-kind={finding.kind}>
+                  <span className="finding-tag">{finding.tag}</span>
+                  <div className="finding-body"><b>{finding.body}</b></div>
+                </div>
+              ))}
+              <div className="finding" data-kind="insight">
+                <span className="finding-tag">Next</span>
+                <div className="finding-body">
+                  <b>{intelligence.recommended_next_step}</b>{" "}
+                  <button className="btn sm" style={{ marginTop: 6 }} onClick={() => ping("Drafting clarification request…")}>
+                    Request clarification
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
+          ) : (
+            <div className="empty">
+              No brief intelligence has been saved for this project yet. Paste the real brief, then run Brief Intelligence to unlock Direction.
+            </div>
+          )}
         </div>
       </div>
 
       <div style={{ marginTop: 22 }}>
-        <PipelineStepper currentStage="brief" onJump={jump} statuses={{ brief: source === "sample" ? "active" : "done", direction: "pending", production: "pending", review: "pending", export: "pending" }} />
+        <PipelineStepper currentStage="brief" onJump={jump} statuses={{ brief: intelligence ? "done" : "active", direction: "pending", production: "pending", review: "pending", export: "pending" }} />
       </div>
     </div>
   );

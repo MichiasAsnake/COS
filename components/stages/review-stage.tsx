@@ -20,27 +20,13 @@ type QAReviewOutput = {
   version: number;
 };
 
-const SAMPLE_OUTPUTS: ProductionOutput[] = [
-  { id: "sample-copy", type: "copy_system", title: "Copy System · Quiet Utility", version: 1, status: "draft" },
-  { id: "sample-visual", type: "visual_direction", title: "Visual Direction · Quiet Utility", version: 1, status: "draft" },
-  { id: "sample-shots", type: "shot_list", title: "Shot List · Quiet Utility", version: 1, status: "draft" },
-];
-
-const SAMPLE_REVIEW: QAReview = {
-  brand_fit: 86,
-  clarity: 91,
-  novelty: 72,
-  channel_fit: 88,
-  issues: [
-    { severity: "medium", title: "Hook could land faster", body: "The promise is clear, but the pain should appear in the first beat.", recommended_fix: "Open on the bag dump before showing the organized result." },
-    { severity: "low", title: "CTA is slightly generic", body: "The CTA works but does not reinforce Quiet Utility.", recommended_fix: "Tie the CTA to calm everyday carry instead of a generic shop prompt." },
-  ],
-  recommended_fixes: ["Lead with a specific commuter pain.", "Make the CTA echo the territory language."],
-  verdict: "revise",
+type ReviewWorkspace = {
+  productionOutputs?: ProductionOutput[];
+  qaReview?: QAReviewOutput | null;
 };
 
 interface ReviewStageProps {
-  projectSlug?: string;
+  projectSlug: string;
   jump: (stage: Stage) => void;
   ping: (msg: string) => void;
 }
@@ -51,13 +37,12 @@ function scoreTone(score: number) {
   return "low";
 }
 
-export function ReviewStage({ projectSlug = "atlas", jump, ping }: ReviewStageProps) {
-  const [outputs, setOutputs] = useState<ProductionOutput[]>(SAMPLE_OUTPUTS);
-  const [selectedOutputId, setSelectedOutputId] = useState(SAMPLE_OUTPUTS[0]?.id ?? "");
-  const [review, setReview] = useState<QAReviewOutput | null>({ id: "sample-review", title: "Sample QA Review", content: SAMPLE_REVIEW, version: 1 });
+export function ReviewStage({ projectSlug, jump, ping }: ReviewStageProps) {
+  const [outputs, setOutputs] = useState<ProductionOutput[]>([]);
+  const [selectedOutputId, setSelectedOutputId] = useState("");
+  const [review, setReview] = useState<QAReviewOutput | null>(null);
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState(false);
-  const [source, setSource] = useState<"backend" | "sample">("sample");
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -65,22 +50,23 @@ export function ReviewStage({ projectSlug = "atlas", jump, ping }: ReviewStagePr
     async function loadReview() {
       setLoading(true);
       setError(null);
+      setOutputs([]);
+      setSelectedOutputId("");
+      setReview(null);
       try {
-        const response = await fetch(`/api/projects/${projectSlug}/review`, { cache: "no-store" });
+        const response = await fetch(`/api/projects/${encodeURIComponent(projectSlug)}/review`, { cache: "no-store" });
         if (!response.ok) throw new Error(`Review workspace unavailable (${response.status})`);
-        const data = await response.json();
+        const data = await response.json() as ReviewWorkspace;
         if (!active) return;
-        const loadedOutputs = Array.isArray(data.productionOutputs) && data.productionOutputs.length ? data.productionOutputs : SAMPLE_OUTPUTS;
+        const loadedOutputs = Array.isArray(data.productionOutputs) ? data.productionOutputs : [];
         setOutputs(loadedOutputs);
         setSelectedOutputId((current) => loadedOutputs.some((output: ProductionOutput) => output.id === current) ? current : loadedOutputs[0]?.id ?? "");
         setReview(data.qaReview ?? null);
-        setSource("backend");
       } catch (err) {
         if (!active) return;
-        setOutputs(SAMPLE_OUTPUTS);
-        setSelectedOutputId(SAMPLE_OUTPUTS[0]?.id ?? "");
-        setReview({ id: "sample-review", title: "Sample QA Review", content: SAMPLE_REVIEW, version: 1 });
-        setSource("sample");
+        setOutputs([]);
+        setSelectedOutputId("");
+        setReview(null);
         setError(err instanceof Error ? err.message : "Review workspace unavailable");
       } finally {
         if (active) setLoading(false);
@@ -97,6 +83,7 @@ export function ReviewStage({ projectSlug = "atlas", jump, ping }: ReviewStagePr
 
   const activeReview = review?.content;
   const resolvedCount = activeReview?.issues.length ? activeReview.issues.filter((issue) => issue.severity === "low").length : 0;
+  const hasOutputs = outputs.length > 0;
 
   async function runReview() {
     if (!selectedOutput) {
@@ -106,21 +93,19 @@ export function ReviewStage({ projectSlug = "atlas", jump, ping }: ReviewStagePr
     setRunning(true);
     setError(null);
     try {
-      const response = await fetch(`/api/projects/${projectSlug}/review`, {
+      const response = await fetch(`/api/projects/${encodeURIComponent(projectSlug)}/review`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ outputId: selectedOutput.id }),
       });
       const data = await response.json().catch(() => null);
       if (!response.ok) throw new Error(data?.error ?? `QA review failed (${response.status})`);
+      if (!data?.qaReview) throw new Error("QA review completed without returning review data.");
       setReview(data.qaReview);
-      setSource("backend");
       ping("QA review completed");
     } catch (err) {
       setError(err instanceof Error ? err.message : "QA review failed");
-      ping("QA review unavailable · showing sample");
-      setReview({ id: "sample-review", title: "Sample QA Review", content: SAMPLE_REVIEW, version: 1 });
-      setSource("sample");
+      ping("QA review failed");
     } finally {
       setRunning(false);
     }
@@ -130,7 +115,7 @@ export function ReviewStage({ projectSlug = "atlas", jump, ping }: ReviewStagePr
     <div className="page stage-fade">
       <div className="stage-hero">
         <div>
-          <div className="stage-eyebrow">Stage 04 · Review · {source === "backend" ? "Persisted" : "Sample fallback"}</div>
+          <div className="stage-eyebrow">Stage 04 · Review</div>
           <div className="stage-title">Critique, not commentary.</div>
           <div className="stage-desc">The QA Critic scores production output, flags issues with severity, and gives fixes that can drive feedback or export decisions.</div>
         </div>
@@ -153,7 +138,7 @@ export function ReviewStage({ projectSlug = "atlas", jump, ping }: ReviewStagePr
           </button>
         </div>
         <div className="output-grid" style={{ marginTop: 14 }}>
-          {outputs.map((output) => (
+          {hasOutputs ? outputs.map((output) => (
             <button
               key={output.id}
               className="output-card"
@@ -165,7 +150,9 @@ export function ReviewStage({ projectSlug = "atlas", jump, ping }: ReviewStagePr
               <div className="output-title">{output.title}</div>
               <div className="output-meta">v{output.version} · {output.status ?? "draft"}</div>
             </button>
-          ))}
+          )) : (
+            <div className="empty">No production outputs are available yet. Generate Production assets before running the QA Critic.</div>
+          )}
         </div>
         {error && <div className="error-note" style={{ marginTop: 12 }}>{error}</div>}
       </div>

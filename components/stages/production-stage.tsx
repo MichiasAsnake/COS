@@ -30,45 +30,6 @@ const FEEDBACK_ACTIONS: { type: FeedbackType; label: string }[] = [
   { type: "shorter", label: "Shorter" },
 ];
 
-const sampleOutputs: ProductionOutput[] = [
-  {
-    id: "sample-copy",
-    type: "copy_system",
-    title: "Copy System · Quiet Utility",
-    version: 1,
-    content: {
-      hooks: ["Your bag should not need a search party.", "The pocket you need, before you need it."],
-      scripts: [{ title: "15s Quiet Utility", duration: "15s", voiceover: "Start with the daily bag dump, then reveal the calm system inside.", beats: ["bag dump", "pocket reveal", "commute exit"] }],
-      caption_options: ["A place for everything, finally."],
-      copy_sets: [{ title: "PDP headlines", lines: ["Utility, quietly upgraded.", "Organization without the overpack."] }],
-    } satisfies CopySystem,
-  },
-  {
-    id: "sample-visual",
-    type: "visual_direction",
-    title: "Visual Direction · Quiet Utility",
-    version: 1,
-    content: {
-      visual_direction: "Warm close-ups, useful hands, restrained product detail, and clean motion from mess to order.",
-      image_prompts: ["Warm studio close-up of organized bag pockets with keys, lip balm, wallet, and notebook placed precisely"],
-      video_prompts: ["TikTok UGC: chaotic bag dump turns into one calm organized pack in under 8 seconds"],
-      do_rules: ["Use tactile macro details", "Keep backgrounds quiet"],
-      dont_rules: ["Avoid luxury cliché props", "Avoid sterile tech-product lighting"],
-    } satisfies VisualDirection,
-  },
-  {
-    id: "sample-shots",
-    type: "shot_list",
-    title: "Shot List · Quiet Utility",
-    version: 1,
-    content: {
-      shot_list: [{ shot: "Bag dump cold open", purpose: "Show the pain before the product promise", props: ["keys", "wallet", "earbuds", "lip balm"], notes: "Keep under 2 seconds" }],
-      deliverables: ["3 TikTok cuts", "6 product stills", "1 PDP organization diagram"],
-      production_risks: ["Avoid making the organization feel too staged"],
-    } satisfies ShotList,
-  },
-];
-
 const GROUPS: { id: ProductionOutputType; label: string }[] = [
   { id: "copy_system", label: "Copy System" },
   { id: "visual_direction", label: "Visuals" },
@@ -83,10 +44,6 @@ interface ProductionStageProps {
 
 function productionOutputs(payload: ProductionWorkspace): ProductionOutput[] {
   return (payload.outputs ?? []).filter((output) => output.type === "copy_system" || output.type === "visual_direction" || output.type === "shot_list");
-}
-
-function isSample(output: ProductionOutput) {
-  return output.id.startsWith("sample-");
 }
 
 function summaryForOutput(output: ProductionOutput) {
@@ -147,8 +104,8 @@ function OutputDetails({ output }: { output: ProductionOutput }) {
 
 export function ProductionStage({ projectSlug, jump, ping }: ProductionStageProps) {
   const [active, setActive] = useState<ProductionOutputType>("copy_system");
-  const [outputs, setOutputs] = useState<ProductionOutput[]>(sampleOutputs);
-  const [selectedOutputId, setSelectedOutputId] = useState(sampleOutputs[0].id);
+  const [outputs, setOutputs] = useState<ProductionOutput[]>([]);
+  const [selectedOutputId, setSelectedOutputId] = useState("");
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [feedbacking, setFeedbacking] = useState<FeedbackType | null>(null);
@@ -158,8 +115,13 @@ export function ProductionStage({ projectSlug, jump, ping }: ProductionStageProp
     let activeRequest = true;
 
     async function loadProductionOutputs() {
+      setLoading(true);
+      setError(null);
+      setOutputs([]);
+      setSelectedOutputId("");
+      setActive("copy_system");
       try {
-        const response = await fetch(`/api/projects/${projectSlug}/production`, { cache: "no-store" });
+        const response = await fetch(`/api/projects/${encodeURIComponent(projectSlug)}/production`, { cache: "no-store" });
         if (!response.ok) throw new Error((await response.json().catch(() => null))?.error ?? "Could not load production outputs.");
         const payload = await response.json() as ProductionWorkspace;
         const saved = productionOutputs(payload);
@@ -171,7 +133,7 @@ export function ProductionStage({ projectSlug, jump, ping }: ProductionStageProp
         }
         setError(null);
       } catch (loadError) {
-        if (activeRequest) setError(loadError instanceof Error ? loadError.message : "Could not load production outputs. Showing sample outputs.");
+        if (activeRequest) setError(loadError instanceof Error ? loadError.message : "Could not load production outputs.");
       } finally {
         if (activeRequest) setLoading(false);
       }
@@ -187,13 +149,13 @@ export function ProductionStage({ projectSlug, jump, ping }: ProductionStageProp
   const grouped = useMemo(() => GROUPS.map((group) => ({ ...group, outputs: outputs.filter((output) => output.type === group.id) })), [outputs]);
   const activeOutputs = outputs.filter((output) => output.type === active);
   const selectedOutput = outputs.find((output) => output.id === selectedOutputId) ?? activeOutputs[0] ?? outputs[0];
-  const generatedFromBackend = outputs.some((output) => !isSample(output));
+  const hasOutputs = outputs.length > 0;
 
   const handleGenerate = async () => {
     setGenerating(true);
     setError(null);
     try {
-      const response = await fetch(`/api/projects/${projectSlug}/production`, { method: "POST" });
+      const response = await fetch(`/api/projects/${encodeURIComponent(projectSlug)}/production`, { method: "POST" });
       if (!response.ok) throw new Error((await response.json().catch(() => null))?.error ?? "Could not generate production system.");
       const payload = await response.json() as ProductionWorkspace;
       const generated = productionOutputs(payload);
@@ -211,15 +173,11 @@ export function ProductionStage({ projectSlug, jump, ping }: ProductionStageProp
 
   const applyFeedback = async (feedbackType: FeedbackType) => {
     if (!selectedOutput) return;
-    if (isSample(selectedOutput)) {
-      setError("Generate real production outputs before applying feedback.");
-      return;
-    }
 
     setFeedbacking(feedbackType);
     setError(null);
     try {
-      const response = await fetch(`/api/projects/${projectSlug}/production`, {
+      const response = await fetch(`/api/projects/${encodeURIComponent(projectSlug)}/production`, {
         method: "PATCH",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ outputId: selectedOutput.id, feedbackType }),
@@ -248,7 +206,7 @@ export function ProductionStage({ projectSlug, jump, ping }: ProductionStageProp
         </div>
         <div className="next-action">
           <span className="next-label">Recommended next</span>
-          <button className="btn primary" onClick={() => jump("review")} disabled={!generatedFromBackend}>
+          <button className="btn primary" onClick={() => jump("review")} disabled={!hasOutputs}>
             Send to Review <Icons.arrowR width={14} height={14} />
           </button>
         </div>
@@ -258,10 +216,10 @@ export function ProductionStage({ projectSlug, jump, ping }: ProductionStageProp
         <div className="panel-head">
           <div>
             <h3>Production Agents</h3>
-            <div className="brief-meta">{loading ? "Loading persisted outputs" : generatedFromBackend ? "Saved production outputs" : "Sample production preview"}</div>
+            <div className="brief-meta">{loading ? "Loading persisted outputs" : hasOutputs ? "Saved production outputs" : "No saved production outputs"}</div>
           </div>
           <button className="btn sm" onClick={handleGenerate} disabled={loading || generating}>
-            <Icons.refresh width={12} height={12} /> {generating ? "Generating…" : generatedFromBackend ? "Regenerate production system" : "Generate production system"}
+            <Icons.refresh width={12} height={12} /> {generating ? "Generating…" : hasOutputs ? "Regenerate production system" : "Generate production system"}
           </button>
         </div>
         {error && <div className="brief-error">{error}</div>}
@@ -275,12 +233,12 @@ export function ProductionStage({ projectSlug, jump, ping }: ProductionStageProp
               <span className="count">{String(g.outputs.length).padStart(2, "0")}</span>
             </button>
           ))}
-          <button className="btn sm ghost" style={{ justifyContent: "flex-start", marginTop: 8 }} onClick={handleGenerate} disabled={generating}>
+          <button className="btn sm ghost" style={{ justifyContent: "flex-start", marginTop: 8 }} onClick={handleGenerate} disabled={loading || generating}>
             <Icons.plus width={12} height={12} /> Run agents
           </button>
         </div>
         <div className="prod-list">
-          {activeOutputs.map((output, i) => (
+          {activeOutputs.length ? activeOutputs.map((output, i) => (
             <div className="prod-item" key={output.id} data-active={selectedOutput?.id === output.id ? "true" : "false"} onClick={() => setSelectedOutputId(output.id)}>
               <div className="prod-num">{String(i + 1).padStart(2, "0")}</div>
               <div>
@@ -290,14 +248,16 @@ export function ProductionStage({ projectSlug, jump, ping }: ProductionStageProp
               <div className="prod-actions">
                 <button className="btn sm" onClick={(event) => { event.stopPropagation(); void applyFeedback("less_generic"); }} disabled={Boolean(feedbacking)}><Icons.refresh width={12} height={12} /> Less generic</button>
                 <button className="btn sm" onClick={(event) => { event.stopPropagation(); setSelectedOutputId(output.id); }}><Icons.copy width={12} height={12} /></button>
-                <button className="btn sm" onClick={(event) => { event.stopPropagation(); jump("review"); }} disabled={isSample(output)}>Open <Icons.arrowR width={12} height={12} /></button>
+                <button className="btn sm" onClick={(event) => { event.stopPropagation(); jump("review"); }}>Open <Icons.arrowR width={12} height={12} /></button>
               </div>
             </div>
-          ))}
+          )) : (
+            <div className="empty">No {GROUPS.find((group) => group.id === active)?.label.toLowerCase()} outputs yet. Run Production Agents after selecting a Direction.</div>
+          )}
         </div>
       </div>
 
-      {selectedOutput && (
+      {selectedOutput ? (
         <div className="panel" style={{ marginTop: 22 }}>
           <div className="panel-head">
             <div>
@@ -306,7 +266,7 @@ export function ProductionStage({ projectSlug, jump, ping }: ProductionStageProp
             </div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
               {FEEDBACK_ACTIONS.map((action) => (
-                <button key={action.type} className="btn sm" onClick={() => void applyFeedback(action.type)} disabled={Boolean(feedbacking) || isSample(selectedOutput)}>
+                <button key={action.type} className="btn sm" onClick={() => void applyFeedback(action.type)} disabled={Boolean(feedbacking)}>
                   {feedbacking === action.type ? "Applying…" : action.label}
                 </button>
               ))}
@@ -314,10 +274,14 @@ export function ProductionStage({ projectSlug, jump, ping }: ProductionStageProp
           </div>
           <OutputDetails output={selectedOutput} />
         </div>
+      ) : (
+        <div className="panel" style={{ marginTop: 22 }}>
+          <div className="empty">No production output selected. Generate copy, visual direction, and shot lists to review structured assets here.</div>
+        </div>
       )}
 
       <div style={{ marginTop: 22 }}>
-        <PipelineStepper currentStage="production" onJump={jump} statuses={{ brief: "done", direction: "done", production: "active", review: generatedFromBackend ? "active" : "pending", export: "pending" }} />
+        <PipelineStepper currentStage="production" onJump={jump} statuses={{ brief: "done", direction: "done", production: "active", review: hasOutputs ? "active" : "pending", export: "pending" }} />
       </div>
     </div>
   );
