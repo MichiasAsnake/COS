@@ -13,7 +13,7 @@ export default async function Home() {
     return <RootDisconnectedState />;
   }
 
-  if (projects[0]) redirect(`/projects/${projects[0].slug}`);
+  if (projects.length > 0) redirect("/projects");
 
   return <RootProjectEmptyState />;
 }

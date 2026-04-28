@@ -51,7 +51,7 @@ export function Sidebar({ activeNav, onNav, activeProject, onProject, projects, 
 
       <nav className="nav">
         {NAV_ITEMS.map((it) => (
-          <button key={it.id} className="nav-item" data-active={activeNav === it.id ? "true" : "false"} onClick={() => it.enabled && onNav(it.id)} type="button" disabled={!it.enabled} title={it.enabled ? it.label : `${it.label} is not enabled yet`}>
+          <button key={it.id} className="nav-item" data-active={activeNav === it.id ? "true" : "false"} onClick={() => it.enabled && onNav(it.id)} type="button" disabled={!it.enabled} title={it.id === "projects" ? "Open project index" : it.enabled ? it.label : `${it.label} is not enabled yet`}>
             <span className="ico"><it.icon width={16} height={16} /></span>
             {it.label}
             {!it.enabled && <span className="badge">Soon</span>}
@@ -60,7 +60,7 @@ export function Sidebar({ activeNav, onNav, activeProject, onProject, projects, 
 
         <div className="nav-section">Workspace</div>
         {WS_ITEMS.map((it) => (
-          <button key={it.id} className="nav-item" data-active={activeNav === it.id ? "true" : "false"} onClick={() => it.enabled && onNav(it.id)} type="button" disabled={!it.enabled} title={it.enabled ? it.label : `${it.label} is not enabled yet`}>
+          <button key={it.id} className="nav-item" data-active={activeNav === it.id ? "true" : "false"} onClick={() => it.enabled && onNav(it.id)} type="button" disabled={!it.enabled} title={it.id === "projects" ? "Open project index" : it.enabled ? it.label : `${it.label} is not enabled yet`}>
             <span className="ico"><it.icon width={16} height={16} /></span>
             {it.label}
             {!it.enabled && <span className="badge">Soon</span>}

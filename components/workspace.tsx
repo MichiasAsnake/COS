@@ -80,6 +80,11 @@ export function Workspace({ workspace }: { workspace: ProjectWorkspaceData }) {
     if (slug !== project.slug) router.push(`/projects/${slug}`);
   }, [project.slug, router]);
 
+  const handleNav = useCallback((id: string) => {
+    setActiveNav(id);
+    if (id === "projects") router.push("/projects");
+  }, [router]);
+
   const handleNewProject = useCallback(() => {
     setNewProjectOpen(true);
   }, []);
@@ -126,7 +131,7 @@ export function Workspace({ workspace }: { workspace: ProjectWorkspaceData }) {
       <div className="app" data-density={density} data-mode={mode} data-rail={rail ? "on" : "off"}>
         <Sidebar
           activeNav={activeNav}
-          onNav={setActiveNav}
+          onNav={handleNav}
           activeProject={project.slug}
           onProject={handleProjectSelect}
           projects={projects}
