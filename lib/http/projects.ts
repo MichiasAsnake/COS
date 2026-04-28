@@ -5,6 +5,7 @@ import { getRequiredServerEnv } from "@/lib/env";
 import { createSupabaseAdminClient } from "@/lib/db/supabase";
 import { getBriefWorkspace, runBriefIntelligenceWorkflow as defaultRunBriefIntelligenceWorkflow } from "@/lib/workflow/brief";
 import type { Inserts, Tables } from "@/types/database";
+import type { OutputSummary, ProjectSummary, ProjectWorkspaceData, WorkflowStageSummary } from "@/types/projects";
 
 const CreateProjectRequestSchema = z.object({
   name: z.string().trim().min(3).max(120),
@@ -30,6 +31,73 @@ export function slugifyProjectName(name: string) {
 }
 
 const INITIAL_WORKFLOW_STAGES = ["brief", "direction", "production", "review", "export"] as const;
+const PROJECT_SELECT = "id, slug, name, description, client_name, status, selected_territory_id, created_at, updated_at";
+const STAGE_ORDER = ["brief", "direction", "production", "review", "export"] as const;
+
+function sortStages(stages: WorkflowStageSummary[]) {
+  return [...stages].sort((a, b) => STAGE_ORDER.indexOf(a.stage) - STAGE_ORDER.indexOf(b.stage));
+}
+
+export async function listProjects(): Promise<ProjectSummary[]> {
+  const client = createSupabaseAdminClient();
+  const { data, error } = await client
+    .from("projects")
+    .select(PROJECT_SELECT)
+    .eq("status", "active")
+    .order("updated_at", { ascending: false });
+
+  if (error) throw new Error(error.message);
+  return data ?? [];
+}
+
+export async function getProjectBySlug(slug: string): Promise<ProjectSummary | null> {
+  const parsed = ProjectSlugSchema.safeParse(slug);
+  if (!parsed.success) return null;
+  const client = createSupabaseAdminClient();
+  const { data, error } = await client
+    .from("projects")
+    .select(PROJECT_SELECT)
+    .eq("slug", parsed.data)
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function getProjectWorkspaceData(slug: string): Promise<ProjectWorkspaceData | null> {
+  const project = await getProjectBySlug(slug);
+  if (!project) return null;
+
+  const client = createSupabaseAdminClient();
+  const [projectsResult, stagesResult, outputsResult] = await Promise.all([
+    client
+      .from("projects")
+      .select(PROJECT_SELECT)
+      .eq("status", "active")
+      .order("updated_at", { ascending: false }),
+    client
+      .from("workflow_stages")
+      .select("id, project_id, stage, status, summary, updated_at")
+      .eq("project_id", project.id),
+    client
+      .from("outputs")
+      .select("id, project_id, stage, type, title, content, status, version, created_at, updated_at")
+      .eq("project_id", project.id)
+      .order("updated_at", { ascending: false })
+      .limit(12),
+  ]);
+
+  if (projectsResult.error) throw new Error(projectsResult.error.message);
+  if (stagesResult.error) throw new Error(stagesResult.error.message);
+  if (outputsResult.error) throw new Error(outputsResult.error.message);
+
+  return {
+    project,
+    projects: projectsResult.data ?? [],
+    stages: sortStages((stagesResult.data ?? []) as WorkflowStageSummary[]),
+    outputs: (outputsResult.data ?? []) as OutputSummary[],
+  };
+}
 
 export async function createProject(input: Inserts<"projects">): Promise<Tables<"projects">> {
   const client = createSupabaseAdminClient();
@@ -86,6 +154,18 @@ function coerceErrorMessage(error: unknown) {
 
 type ProjectCreator = (input: Inserts<"projects">) => Promise<unknown>;
 type BriefWorkflowRunner = (input: Parameters<typeof defaultRunBriefIntelligenceWorkflow>[0]) => Promise<unknown>;
+
+export async function handleListProjectsRequest(deps: { listProjects?: () => Promise<ProjectSummary[]> } = {}) {
+  try {
+    const load = deps.listProjects ?? listProjects;
+    const projects = await load();
+    return NextResponse.json({ projects });
+  } catch (error) {
+    const message = coerceErrorMessage(error);
+    const status = message.includes("not configured") ? 503 : 500;
+    return errorResponse(message, status);
+  }
+}
 
 export async function handleCreateProjectRequest(
   request: Request,

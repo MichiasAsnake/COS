@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { handleCreateProjectRequest, handleParseBriefRequest } from "@/lib/http/projects";
+import { handleCreateProjectRequest, handleListProjectsRequest, handleParseBriefRequest } from "@/lib/http/projects";
 
 function jsonRequest(body: unknown) {
   return new Request("http://cos.local/api", {
@@ -10,6 +10,17 @@ function jsonRequest(body: unknown) {
 }
 
 describe("phase-two project API handlers", () => {
+  it("lists persisted projects", async () => {
+    const projects = [
+      { id: "project-1", slug: "atlas", name: "Project Atlas", description: null, client_name: "Atlas", status: "active", selected_territory_id: null, created_at: "2026-01-01", updated_at: "2026-01-02" },
+    ];
+
+    const response = await handleListProjectsRequest({ listProjects: vi.fn(async () => projects) });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ projects });
+  });
+
   it("validates and creates a project with a URL-safe slug", async () => {
     const createProject = vi.fn(async (input) => ({
       id: "project-1",

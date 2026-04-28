@@ -1,5 +1,6 @@
 "use client";
-import { useState, useCallback } from "react";
+import { useCallback, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Topbar } from "@/components/layout/topbar";
 import { RightRail } from "@/components/layout/right-rail";
@@ -9,16 +10,33 @@ import { DirectionStage } from "@/components/stages/direction-stage";
 import { ProductionStage } from "@/components/stages/production-stage";
 import { ReviewStage } from "@/components/stages/review-stage";
 import { ExportStage } from "@/components/stages/export-stage";
+import type { ProjectWorkspaceData, WorkflowStageSummary } from "@/types/projects";
 
 export type Stage = "overview" | "brief" | "direction" | "production" | "review" | "export";
 type Density = "compact" | "default" | "comfortable";
 type Mode = "dark" | "light";
 
-const PROGRESS_MAP: Record<Stage, number> = {
-  overview: 62, brief: 20, direction: 45, production: 68, review: 84, export: 96,
-};
+type StepState = "done" | "active" | "pending";
 
-export function Workspace({ projectSlug = "atlas" }: { projectSlug?: string }) {
+function workflowStatusToStepState(status: WorkflowStageSummary["status"]): StepState {
+  if (status === "complete") return "done";
+  if (status === "idle") return "pending";
+  return "active";
+}
+
+function progressFromStages(stages: WorkflowStageSummary[]) {
+  if (!stages.length) return 0;
+  const score = stages.reduce((sum, stage) => {
+    if (stage.status === "complete") return sum + 1;
+    if (stage.status === "in_progress" || stage.status === "needs_review") return sum + 0.5;
+    return sum;
+  }, 0);
+  return Math.round((score / stages.length) * 100);
+}
+
+export function Workspace({ workspace }: { workspace: ProjectWorkspaceData }) {
+  const router = useRouter();
+  const { project, projects, stages, outputs } = workspace;
   const [stage, setStage] = useState<Stage>("overview");
   const [feedback, setFeedback] = useState<string[]>([]);
   const [toast, setToast] = useState<string | null>(null);
@@ -26,7 +44,7 @@ export function Workspace({ projectSlug = "atlas" }: { projectSlug?: string }) {
   const [mode] = useState<Mode>("dark");
   const [rail] = useState(true);
   const [activeNav, setActiveNav] = useState("projects");
-  const [activeProject, setActiveProject] = useState("atlas");
+  const [creatingProject, setCreatingProject] = useState(false);
 
   const ping = useCallback((msg: string) => {
     setToast(msg);
@@ -39,32 +57,73 @@ export function Workspace({ projectSlug = "atlas" }: { projectSlug?: string }) {
     if (typeof window !== "undefined") window.scrollTo?.({ top: 0 });
   }, []);
 
-  // For overview, show a fixed "in progress" snapshot
-  const overviewStatuses: Partial<Record<Stage, "done" | "active" | "pending">> = {
-    brief: "done", direction: "active", production: "active", review: "pending", export: "pending",
-  };
+  const statuses = useMemo(() => {
+    return stages.reduce<Partial<Record<Stage, StepState>>>((acc, item) => {
+      acc[item.stage] = workflowStatusToStepState(item.status);
+      return acc;
+    }, {});
+  }, [stages]);
+
+  const progress = useMemo(() => progressFromStages(stages), [stages]);
+
+  const handleProjectSelect = useCallback((slug: string) => {
+    if (slug !== project.slug) router.push(`/projects/${slug}`);
+  }, [project.slug, router]);
+
+  const handleNewProject = useCallback(async () => {
+    if (creatingProject) return;
+    const name = window.prompt("Project name");
+    if (!name?.trim()) return;
+    const clientName = window.prompt("Client / brand name (optional)") ?? "";
+
+    setCreatingProject(true);
+    try {
+      const response = await fetch("/api/projects", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name: name.trim(), clientName: clientName.trim() || null }),
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(payload?.error ?? "Could not create project");
+      const slug = payload?.project?.slug;
+      if (!slug) throw new Error("Project was created but no slug was returned");
+      ping(`Created · ${payload.project.name ?? slug}`);
+      router.push(`/projects/${slug}`);
+      router.refresh();
+    } catch (error) {
+      ping(error instanceof Error ? error.message : "Could not create project");
+    } finally {
+      setCreatingProject(false);
+    }
+  }, [creatingProject, ping, router]);
 
   const onSendFeedback = () => {
     if (!feedback.length) { ping("Pick a direction first"); return; }
-    ping(`Applied · ${feedback.join(" · ")}`);
+    ping(`Applied locally · ${feedback.join(" · ")}`);
   };
-
-  const progress = PROGRESS_MAP[stage] ?? 62;
 
   return (
     <>
       <div className="app" data-density={density} data-mode={mode} data-rail={rail ? "on" : "off"}>
-        <Sidebar activeNav={activeNav} onNav={setActiveNav} activeProject={activeProject} onProject={setActiveProject} />
+        <Sidebar
+          activeNav={activeNav}
+          onNav={setActiveNav}
+          activeProject={project.slug}
+          onProject={handleProjectSelect}
+          projects={projects}
+          onNewProject={handleNewProject}
+          creatingProject={creatingProject}
+        />
 
         <main className="center">
-          <Topbar onShare={() => ping("Share link copied")} />
+          <Topbar projectName={project.name} onShare={() => ping("Share link copied")} />
 
-          {stage === "overview"   && <OverviewStage progress={progress} statuses={overviewStatuses} jump={jump} feedback={feedback} ping={ping} />}
-          {stage === "brief"      && <BriefStage projectSlug={projectSlug} jump={jump} ping={ping} />}
-          {stage === "direction"  && <DirectionStage projectSlug={projectSlug} jump={jump} ping={ping} feedback={feedback} />}
-          {stage === "production" && <ProductionStage projectSlug={projectSlug} jump={jump} ping={ping} />}
-          {stage === "review"     && <ReviewStage projectSlug={projectSlug} jump={jump} ping={ping} />}
-          {stage === "export"     && <ExportStage projectSlug={projectSlug} jump={jump} ping={ping} />}
+          {stage === "overview"   && <OverviewStage project={project} stages={stages} outputs={outputs} progress={progress} statuses={statuses} jump={jump} feedback={feedback} ping={ping} />}
+          {stage === "brief"      && <BriefStage projectSlug={project.slug} jump={jump} ping={ping} />}
+          {stage === "direction"  && <DirectionStage projectSlug={project.slug} jump={jump} ping={ping} feedback={feedback} />}
+          {stage === "production" && <ProductionStage projectSlug={project.slug} jump={jump} ping={ping} />}
+          {stage === "review"     && <ReviewStage projectSlug={project.slug} jump={jump} ping={ping} />}
+          {stage === "export"     && <ExportStage projectSlug={project.slug} jump={jump} ping={ping} />}
         </main>
 
         {rail && <RightRail feedback={feedback} setFeedback={setFeedback} onSendFeedback={onSendFeedback} />}
