@@ -4,6 +4,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { ProjectSlugSchema } from "@/lib/agents/schemas";
 import { getRequiredServerEnv } from "@/lib/env";
 import { createSupabaseAdminClient } from "@/lib/db/supabase";
+import { allocateProjectSlug, projectSlugCandidates } from "@/lib/project-lifecycle";
 import { getBriefWorkspace, runBriefIntelligenceWorkflow as defaultRunBriefIntelligenceWorkflow } from "@/lib/workflow/brief";
 import type { Database, Inserts, Tables } from "@/types/database";
 import type {
@@ -27,7 +28,7 @@ const UpdateProjectRequestSchema = z.object({
   name: z.string().trim().min(3).max(120).optional(),
   clientName: z.string().trim().min(1).max(120).optional().nullable(),
   description: z.string().trim().min(10).max(500).optional().nullable(),
-});
+}).refine((payload) => Object.values(payload).some((value) => value !== undefined), "Provide a project field to update.");
 
 const ParseBriefRequestSchema = z.object({
   rawBrief: z.string().trim().min(40, "Paste at least 40 characters so the brief agent has enough context."),
@@ -144,7 +145,7 @@ async function getAvailableProjectSlug(
   baseSlug: string,
   excludeProjectId?: string,
 ) {
-  const candidates = Array.from({ length: 20 }, (_, index) => index === 0 ? baseSlug : `${baseSlug}-${index + 1}`);
+  const candidates = projectSlugCandidates(baseSlug, 20);
   let query = client
     .from("projects")
     .select("id, slug")
@@ -156,11 +157,11 @@ async function getAvailableProjectSlug(
   if (error) throw new Error(error.message);
 
   const used = new Set((data ?? []).map((project) => project.slug));
-  const available = candidates.find((candidate) => !used.has(candidate));
-  if (available) return available;
+  const available = allocateProjectSlug(baseSlug, used);
+  if (candidates.includes(available)) return available;
 
   for (let suffix = 21; suffix < 1000; suffix += 1) {
-    const candidate = `${baseSlug}-${suffix}`;
+    const [candidate] = projectSlugCandidates(baseSlug, suffix).slice(-1);
     let candidateQuery = client
       .from("projects")
       .select("id")
@@ -251,6 +252,10 @@ export async function updateProjectBySlug(
   if (!current) return null;
 
   const nextName = input.name ?? current.name;
+  if (input.name !== undefined && input.name === current.name && input.clientName === undefined && input.description === undefined) {
+    throw new Error("Project name must be different from the current name.");
+  }
+
   const nextSlug = input.name && input.name !== current.name
     ? await getAvailableProjectSlug(client, slugifyProjectName(input.name), current.id)
     : current.slug;
@@ -301,6 +306,18 @@ function coerceErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : "Unknown server error";
 }
 
+function projectErrorResponse(error: unknown, fallback: string) {
+  const message = coerceErrorMessage(error);
+  const lower = message.toLowerCase();
+  if (message.includes("not configured")) return errorResponse(message, 503);
+  if (lower.includes("duplicate") || lower.includes("unique") || lower.includes("could not allocate")) {
+    return errorResponse("A project with that slug already exists. Retry to allocate a unique slug.", 409);
+  }
+  if (lower.includes("must be different") || lower.includes("invalid project slug")) return errorResponse(message, 400);
+  if (lower.includes("not found")) return errorResponse(message, 404);
+  return errorResponse(fallback, 500);
+}
+
 type ProjectCreator = (input: CreateProjectInput) => Promise<unknown>;
 type BriefWorkflowRunner = (input: Parameters<typeof defaultRunBriefIntelligenceWorkflow>[0]) => Promise<unknown>;
 
@@ -310,9 +327,7 @@ export async function handleListProjectsRequest(deps: { listProjects?: () => Pro
     const projects = await load();
     return NextResponse.json({ projects });
   } catch (error) {
-    const message = coerceErrorMessage(error);
-    const status = message.includes("not configured") ? 503 : 500;
-    return errorResponse(message, status);
+    return projectErrorResponse(error, "Projects could not be loaded. Check configuration and retry.");
   }
 }
 
@@ -338,9 +353,7 @@ export async function handleCreateProjectRequest(
 
     return NextResponse.json({ project }, { status: 201 });
   } catch (error) {
-    const message = coerceErrorMessage(error);
-    const status = message.includes("not configured") ? 503 : message.toLowerCase().includes("duplicate") || message.toLowerCase().includes("unique") ? 409 : 500;
-    return errorResponse(message, status);
+    return projectErrorResponse(error, "Project could not be created. Check the fields and retry.");
   }
 }
 
@@ -351,6 +364,9 @@ export async function handleUpdateProjectRequest(
     updateProject?: typeof updateProjectBySlug;
   },
 ) {
+  const parsedSlug = ProjectSlugSchema.safeParse(deps.projectSlug);
+  if (!parsedSlug.success) return errorResponse("Invalid project slug.", 400);
+
   const parsed = UpdateProjectRequestSchema.safeParse(await safeJson(request));
   if (!parsed.success) {
     return errorResponse(parsed.error.issues[0]?.message ?? "Invalid project update payload");
@@ -358,13 +374,30 @@ export async function handleUpdateProjectRequest(
 
   try {
     const updateProject = deps.updateProject ?? updateProjectBySlug;
-    const project = await updateProject(deps.projectSlug, parsed.data);
-    if (!project) return errorResponse(`Project not found: ${deps.projectSlug}`, 404);
+    const project = await updateProject(parsedSlug.data, parsed.data);
+    if (!project) return errorResponse(`Project not found: ${parsedSlug.data}`, 404);
     return NextResponse.json({ project });
   } catch (error) {
-    const message = coerceErrorMessage(error);
-    const status = message.includes("not configured") ? 503 : message.toLowerCase().includes("duplicate") || message.toLowerCase().includes("unique") ? 409 : 500;
-    return errorResponse(message, status);
+    return projectErrorResponse(error, "Project could not be updated. Check the name and retry.");
+  }
+}
+
+export async function handleGetProjectWorkspaceRequest(
+  deps: {
+    projectSlug: string;
+    getProjectWorkspaceData?: typeof getProjectWorkspaceData;
+  },
+) {
+  const parsedSlug = ProjectSlugSchema.safeParse(deps.projectSlug);
+  if (!parsedSlug.success) return errorResponse("Invalid project slug.", 400);
+
+  try {
+    const load = deps.getProjectWorkspaceData ?? getProjectWorkspaceData;
+    const workspace = await load(parsedSlug.data);
+    if (!workspace) return errorResponse(`Project not found: ${parsedSlug.data}`, 404);
+    return NextResponse.json(workspace);
+  } catch (error) {
+    return projectErrorResponse(error, "Project workspace could not be loaded. Check configuration and retry.");
   }
 }
 

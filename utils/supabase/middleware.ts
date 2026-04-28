@@ -7,20 +7,23 @@ function getSupabasePublicEnv() {
   const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
   if (!supabaseUrl || !supabaseKey) {
-    throw new Error("Supabase middleware client is not configured: missing public Supabase URL/key");
+    return null;
   }
 
   return { supabaseUrl, supabaseKey };
 }
 
 export async function updateSession(request: NextRequest) {
-  const { supabaseUrl, supabaseKey } = getSupabasePublicEnv();
+  const publicEnv = getSupabasePublicEnv();
 
   let supabaseResponse = NextResponse.next({
     request: {
       headers: request.headers,
     },
   });
+
+  if (!publicEnv) return supabaseResponse;
+  const { supabaseUrl, supabaseKey } = publicEnv;
 
   const supabase = createServerClient<Database>(supabaseUrl, supabaseKey, {
     cookies: {

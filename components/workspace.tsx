@@ -1,10 +1,10 @@
 "use client";
 import { useCallback, useMemo, useState } from "react";
-import type { FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Topbar } from "@/components/layout/topbar";
 import { RightRail } from "@/components/layout/right-rail";
+import { CreateProjectModal, RenameProjectModal } from "@/components/project-lifecycle-modal";
 import { OverviewStage } from "@/components/stages/overview-stage";
 import { BriefStage } from "@/components/stages/brief-stage";
 import { DirectionStage } from "@/components/stages/direction-stage";
@@ -18,19 +18,6 @@ type Density = "compact" | "default" | "comfortable";
 type Mode = "dark" | "light";
 
 type StepState = "done" | "active" | "pending";
-type NewProjectForm = {
-  name: string;
-  clientName: string;
-  description: string;
-  initialBrief: string;
-};
-
-const EMPTY_NEW_PROJECT_FORM: NewProjectForm = {
-  name: "",
-  clientName: "",
-  description: "",
-  initialBrief: "",
-};
 
 function workflowStatusToStepState(status: WorkflowStageSummary["status"]): StepState {
   if (status === "complete") return "done";
@@ -48,10 +35,16 @@ function progressFromStages(stages: WorkflowStageSummary[]) {
   return Math.round((score / stages.length) * 100);
 }
 
+function initialWorkflowStage(stages: WorkflowStageSummary[]): Exclude<Stage, "overview"> {
+  return stages.find((item) => item.status === "in_progress" || item.status === "needs_review")?.stage
+    ?? stages.find((item) => item.status !== "complete")?.stage
+    ?? "export";
+}
+
 export function Workspace({ workspace }: { workspace: ProjectWorkspaceData }) {
   const router = useRouter();
   const { project, projects, stages, outputs } = workspace;
-  const [stage, setStage] = useState<Stage>("overview");
+  const [stage, setStage] = useState<Stage>(() => initialWorkflowStage(stages));
   const [feedback, setFeedback] = useState<string[]>([]);
   const [toast, setToast] = useState<string | null>(null);
   const [density] = useState<Density>("default");
@@ -60,8 +53,8 @@ export function Workspace({ workspace }: { workspace: ProjectWorkspaceData }) {
   const [activeNav, setActiveNav] = useState("projects");
   const [creatingProject, setCreatingProject] = useState(false);
   const [newProjectOpen, setNewProjectOpen] = useState(false);
-  const [newProjectForm, setNewProjectForm] = useState<NewProjectForm>(EMPTY_NEW_PROJECT_FORM);
-  const [newProjectError, setNewProjectError] = useState<string | null>(null);
+  const [renameProjectOpen, setRenameProjectOpen] = useState(false);
+  const [renamingProject, setRenamingProject] = useState(false);
 
   const ping = useCallback((msg: string) => {
     setToast(msg);
@@ -88,47 +81,8 @@ export function Workspace({ workspace }: { workspace: ProjectWorkspaceData }) {
   }, [project.slug, router]);
 
   const handleNewProject = useCallback(() => {
-    setNewProjectError(null);
     setNewProjectOpen(true);
   }, []);
-
-  const updateNewProjectField = useCallback(<TKey extends keyof NewProjectForm>(key: TKey, value: NewProjectForm[TKey]) => {
-    setNewProjectForm((current) => ({ ...current, [key]: value }));
-  }, []);
-
-  const submitNewProject = useCallback(async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (creatingProject) return;
-    setNewProjectError(null);
-    setCreatingProject(true);
-    try {
-      const response = await fetch("/api/projects", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          name: newProjectForm.name.trim(),
-          clientName: newProjectForm.clientName.trim(),
-          description: newProjectForm.description.trim(),
-          initialBrief: newProjectForm.initialBrief.trim(),
-        }),
-      });
-      const payload = await response.json().catch(() => null);
-      if (!response.ok) throw new Error(payload?.error ?? "Could not create project");
-      const slug = payload?.project?.slug;
-      if (!slug) throw new Error("Project was created but no slug was returned");
-      ping(`Created · ${payload.project.name ?? slug}`);
-      setNewProjectForm(EMPTY_NEW_PROJECT_FORM);
-      setNewProjectOpen(false);
-      router.push(`/projects/${slug}`);
-      router.refresh();
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Could not create project";
-      setNewProjectError(message);
-      ping(message);
-    } finally {
-      setCreatingProject(false);
-    }
-  }, [creatingProject, newProjectForm, ping, router]);
 
   const handleShare = useCallback(async () => {
     const href = typeof window !== "undefined" ? window.location.href : `/projects/${project.slug}`;
@@ -140,26 +94,23 @@ export function Workspace({ workspace }: { workspace: ProjectWorkspaceData }) {
     }
   }, [ping, project.slug]);
 
-  const handleRename = useCallback(async () => {
-    const nextName = window.prompt("Rename project", project.name);
-    if (!nextName?.trim() || nextName.trim() === project.name) return;
+  const handleProjectCreated = useCallback((createdProject: { slug: string; name: string }) => {
+    ping(`Created · ${createdProject.name}`);
+    setNewProjectOpen(false);
+    router.push(`/projects/${createdProject.slug}`);
+    router.refresh();
+  }, [ping, router]);
 
-    try {
-      const response = await fetch(`/api/projects/${encodeURIComponent(project.slug)}`, {
-        method: "PATCH",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ name: nextName.trim() }),
-      });
-      const payload = await response.json().catch(() => null);
-      if (!response.ok) throw new Error(payload?.error ?? "Could not rename project");
-      const slug = payload?.project?.slug ?? project.slug;
-      ping("Project renamed");
-      if (slug !== project.slug) router.push(`/projects/${slug}`);
-      router.refresh();
-    } catch (error) {
-      ping(error instanceof Error ? error.message : "Could not rename project");
-    }
-  }, [ping, project.name, project.slug, router]);
+  const handleRename = useCallback(() => {
+    setRenameProjectOpen(true);
+  }, []);
+
+  const handleProjectRenamed = useCallback((renamedProject: { slug: string; name: string }) => {
+    ping(`Renamed · ${renamedProject.name}`);
+    setRenameProjectOpen(false);
+    if (renamedProject.slug !== project.slug) router.push(`/projects/${renamedProject.slug}`);
+    router.refresh();
+  }, [ping, project.slug, router]);
 
   const onSendFeedback = () => {
     if (!feedback.length) { ping("Pick a direction first"); return; }
@@ -180,7 +131,7 @@ export function Workspace({ workspace }: { workspace: ProjectWorkspaceData }) {
         />
 
         <main className="center">
-          <Topbar projectName={project.name} onShare={handleShare} onRename={handleRename} />
+          <Topbar projectName={project.name} onShare={handleShare} onRename={handleRename} renamingProject={renamingProject} />
 
           {stage === "overview"   && <OverviewStage project={project} stages={stages} outputs={outputs} progress={progress} statuses={statuses} jump={jump} feedback={feedback} ping={ping} />}
           {stage === "brief"      && <BriefStage projectSlug={project.slug} jump={jump} ping={ping} />}
@@ -202,47 +153,22 @@ export function Workspace({ workspace }: { workspace: ProjectWorkspaceData }) {
         )}
       </div>
 
-      {newProjectOpen && (
-        <div className="modal-backdrop" role="presentation">
-          <div className="modal-card" role="dialog" aria-modal="true" aria-labelledby="new-project-title">
-            <div className="modal-head">
-              <div>
-                <div className="stage-eyebrow">New Project</div>
-                <h2 id="new-project-title">Create a backend project</h2>
-              </div>
-              <button className="btn-icon" type="button" onClick={() => setNewProjectOpen(false)} disabled={creatingProject} aria-label="Close new project form">
-                ×
-              </button>
-            </div>
+      <CreateProjectModal
+        open={newProjectOpen}
+        onClose={() => setNewProjectOpen(false)}
+        onCreated={handleProjectCreated}
+        onSubmittingChange={setCreatingProject}
+      />
 
-            <form className="project-form" onSubmit={submitNewProject}>
-              <label>
-                <span>Project name</span>
-                <input value={newProjectForm.name} onChange={(event) => updateNewProjectField("name", event.target.value)} minLength={3} maxLength={120} required />
-              </label>
-              <label>
-                <span>Client / brand name</span>
-                <input value={newProjectForm.clientName} onChange={(event) => updateNewProjectField("clientName", event.target.value)} maxLength={120} required />
-              </label>
-              <label>
-                <span>Description / objective</span>
-                <textarea value={newProjectForm.description} onChange={(event) => updateNewProjectField("description", event.target.value)} minLength={10} maxLength={500} required />
-              </label>
-              <label>
-                <span>Initial brief</span>
-                <textarea value={newProjectForm.initialBrief} onChange={(event) => updateNewProjectField("initialBrief", event.target.value)} minLength={40} maxLength={10000} required />
-              </label>
-              {newProjectError && <div className="brief-error">{newProjectError}</div>}
-              <div className="modal-actions">
-                <button className="btn" type="button" onClick={() => setNewProjectOpen(false)} disabled={creatingProject}>Cancel</button>
-                <button className="btn primary" type="submit" disabled={creatingProject}>
-                  {creatingProject ? "Creating…" : "Create project"}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      <RenameProjectModal
+        key={`${project.slug}:${project.name}:${renameProjectOpen ? "open" : "closed"}`}
+        open={renameProjectOpen}
+        projectSlug={project.slug}
+        projectName={project.name}
+        onClose={() => setRenameProjectOpen(false)}
+        onRenamed={handleProjectRenamed}
+        onSubmittingChange={setRenamingProject}
+      />
 
       {toast && (
         <div className="toast"><span className="dot" />{toast}</div>

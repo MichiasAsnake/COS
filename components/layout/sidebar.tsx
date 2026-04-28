@@ -46,7 +46,7 @@ export function Sidebar({ activeNav, onNav, activeProject, onProject, projects, 
           <Icons.plus width={14} height={14} />
           {creatingProject ? "Creating…" : "New Project"}
         </span>
-        <span className="kbd">backend</span>
+        <span className="kbd">form</span>
       </button>
 
       <nav className="nav">

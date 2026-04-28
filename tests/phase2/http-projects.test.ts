@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
-import { handleCreateProjectRequest, handleListProjectsRequest, handleParseBriefRequest, handleUpdateProjectRequest } from "@/lib/http/projects";
+import { readFileSync } from "node:fs";
+import { handleCreateProjectRequest, handleGetProjectWorkspaceRequest, handleListProjectsRequest, handleParseBriefRequest, handleUpdateProjectRequest } from "@/lib/http/projects";
+import { allocateProjectSlug, validateCreateProjectForm, validateRenameProjectName } from "@/lib/project-lifecycle";
 
 function jsonRequest(body: unknown) {
   return new Request("http://cos.local/api", {
@@ -63,6 +65,31 @@ describe("phase-two project API handlers", () => {
     expect(createProject).not.toHaveBeenCalled();
   });
 
+  it("normalizes duplicate project create failures without leaking persistence internals", async () => {
+    const createProject = vi.fn(async () => {
+      throw new Error("duplicate key value violates unique constraint projects_slug_key");
+    });
+
+    const response = await handleCreateProjectRequest(jsonRequest({
+      name: "Q3 Launch Sprint",
+      clientName: "Atlas Co",
+      description: "Campaign development",
+      initialBrief: "This is a sufficiently detailed initial client brief for the launch sprint intake flow.",
+    }), { createProject });
+    const body = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(Object.keys(body)).toEqual(["error"]);
+    expect(body.error).toMatch(/already exists|retry|unique slug/i);
+    expect(body.error).not.toMatch(/duplicate key|unique constraint|projects_slug_key/i);
+  });
+
+  it("allocates deterministic project slug suffixes", () => {
+    expect(allocateProjectSlug("brand-launch", [])).toBe("brand-launch");
+    expect(allocateProjectSlug("brand-launch", ["brand-launch"])).toBe("brand-launch-2");
+    expect(allocateProjectSlug("brand-launch", ["brand-launch", "brand-launch-2"])).toBe("brand-launch-3");
+  });
+
   it("returns validation errors before creating incomplete projects", async () => {
     const createProject = vi.fn();
 
@@ -95,6 +122,76 @@ describe("phase-two project API handlers", () => {
       project: expect.objectContaining({ slug: "new-launch-name", name: "New Launch Name" }),
     }));
     expect(updateProject).toHaveBeenCalledWith("atlas", { name: "New Launch Name" });
+  });
+
+  it("rejects invalid rename slugs before update dependencies run", async () => {
+    const updateProject = vi.fn();
+
+    const response = await handleUpdateProjectRequest(jsonRequest({ name: "New Launch Name" }), {
+      projectSlug: "Atlas Q3",
+      updateProject,
+    });
+    const body = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(body).toEqual({ error: expect.stringMatching(/invalid project slug/i) });
+    expect(updateProject).not.toHaveBeenCalled();
+  });
+
+  it("normalizes duplicate project rename failures without leaking persistence internals", async () => {
+    const updateProject = vi.fn(async () => {
+      throw new Error("duplicate key value violates unique constraint projects_slug_key");
+    });
+
+    const response = await handleUpdateProjectRequest(jsonRequest({ name: "Existing Launch" }), {
+      projectSlug: "atlas",
+      updateProject,
+    });
+    const body = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(Object.keys(body)).toEqual(["error"]);
+    expect(body.error).toMatch(/already exists|retry|unique slug/i);
+    expect(body.error).not.toMatch(/duplicate key|unique constraint|projects_slug_key/i);
+  });
+
+  it("serves project workspace data from the project lifecycle API", async () => {
+    const workspace = {
+      project: { id: "project-1", slug: "atlas", name: "Project Atlas" },
+      projects: [],
+      stages: [],
+      outputs: [],
+      agentRuns: [],
+      activityEvents: [],
+      feedbackEvents: [],
+    };
+
+    const response = await handleGetProjectWorkspaceRequest({
+      projectSlug: "atlas",
+      getProjectWorkspaceData: vi.fn(async () => workspace),
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual(workspace);
+  });
+
+  it("validates lifecycle form state before client submission", () => {
+    expect(validateCreateProjectForm({
+      name: "Q3",
+      clientName: "",
+      description: "short",
+      initialBrief: "too short",
+    })).toMatch(/project name/i);
+
+    expect(validateRenameProjectName("", "Project Atlas")).toMatch(/project name/i);
+    expect(validateRenameProjectName("Project Atlas", "Project Atlas")).toMatch(/different/i);
+    expect(validateRenameProjectName("New Launch Name", "Project Atlas")).toBeNull();
+  });
+
+  it("uses in-app lifecycle modals instead of browser prompts", () => {
+    const workspaceSource = readFileSync("components/workspace.tsx", "utf8");
+    expect(workspaceSource).not.toContain("window.prompt");
+    expect(workspaceSource).toContain("RenameProjectModal");
   });
 
   it("validates parse-brief requests before running the agent", async () => {
