@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { createSupabaseAdminClient } from "@/lib/db/supabase";
+import { createSupabaseAdminClient, createSupabasePublicClient } from "@/lib/db/supabase";
 import { createOpenAIClient } from "@/lib/ai/client";
 
 describe("backend client factories", () => {
@@ -20,6 +20,27 @@ describe("backend client factories", () => {
     expect(createClient).toHaveBeenCalledWith(
       "https://example.supabase.co",
       "service-role-key",
+      expect.objectContaining({
+        auth: expect.objectContaining({
+          autoRefreshToken: false,
+          persistSession: false,
+        }),
+      }),
+    );
+  });
+
+  it("creates a Supabase public client without requiring the service role key", () => {
+    const createClient = vi.fn(() => ({ from: vi.fn() }));
+
+    const client = createSupabasePublicClient({
+      NEXT_PUBLIC_SUPABASE_URL: "https://example.supabase.co",
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: "publishable-key",
+    }, createClient);
+
+    expect(client).toBeTruthy();
+    expect(createClient).toHaveBeenCalledWith(
+      "https://example.supabase.co",
+      "publishable-key",
       expect.objectContaining({
         auth: expect.objectContaining({
           autoRefreshToken: false,

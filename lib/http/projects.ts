@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { ProjectSlugSchema } from "@/lib/agents/schemas";
 import { getRequiredServerEnv } from "@/lib/env";
-import { createSupabaseAdminClient } from "@/lib/db/supabase";
+import { createSupabaseAdminClient, createSupabasePublicClient } from "@/lib/db/supabase";
 import { allocateProjectSlug, projectSlugCandidates } from "@/lib/project-lifecycle";
 import { getBriefWorkspace, runBriefIntelligenceWorkflow as defaultRunBriefIntelligenceWorkflow } from "@/lib/workflow/brief";
 import type { Database, Inserts, Tables } from "@/types/database";
@@ -56,7 +56,7 @@ function sortStages(stages: WorkflowStageSummary[]) {
 }
 
 export async function listProjects(): Promise<ProjectSummary[]> {
-  const client = createSupabaseAdminClient();
+  const client = createSupabasePublicClient();
   const { data, error } = await client
     .from("projects")
     .select(PROJECT_SELECT)
@@ -70,7 +70,7 @@ export async function listProjects(): Promise<ProjectSummary[]> {
 export async function getProjectBySlug(slug: string): Promise<ProjectSummary | null> {
   const parsed = ProjectSlugSchema.safeParse(slug);
   if (!parsed.success) return null;
-  const client = createSupabaseAdminClient();
+  const client = createSupabasePublicClient();
   const { data, error } = await client
     .from("projects")
     .select(PROJECT_SELECT)
@@ -85,7 +85,7 @@ export async function getProjectWorkspaceData(slug: string): Promise<ProjectWork
   const project = await getProjectBySlug(slug);
   if (!project) return null;
 
-  const client = createSupabaseAdminClient();
+  const client = createSupabasePublicClient();
   const [projectsResult, stagesResult, outputsResult, agentRunsResult, activityEventsResult, feedbackEventsResult] = await Promise.all([
     client
       .from("projects")

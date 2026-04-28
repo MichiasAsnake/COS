@@ -18,15 +18,10 @@ const RawServerEnvSchema = z.object({
   OPENAI_MODEL: z.string().min(1).default("gpt-4.1-mini"),
 });
 
-const RequiredServerEnvSchema = RawServerEnvSchema.superRefine((env, context) => {
-  if (!env.NEXT_PUBLIC_SUPABASE_ANON_KEY && !env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY) {
-    context.addIssue({
-      code: "custom",
-      path: ["NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY"],
-      message: "NEXT_PUBLIC_SUPABASE_ANON_KEY or NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY is required",
-    });
-  }
-}).transform((env) => {
+const normalizePublicSupabaseKeys = <TEnv extends {
+  NEXT_PUBLIC_SUPABASE_ANON_KEY?: string;
+  NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY?: string;
+}>(env: TEnv) => {
   const publicKey = env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? "";
 
   return {
@@ -34,9 +29,35 @@ const RequiredServerEnvSchema = RawServerEnvSchema.superRefine((env, context) =>
     NEXT_PUBLIC_SUPABASE_ANON_KEY: publicKey,
     NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? publicKey,
   };
-});
+};
+
+function requirePublicSupabaseKey(env: {
+  NEXT_PUBLIC_SUPABASE_ANON_KEY?: string;
+  NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY?: string;
+}, context: z.RefinementCtx) {
+  if (!env.NEXT_PUBLIC_SUPABASE_ANON_KEY && !env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY) {
+    context.addIssue({
+      code: "custom",
+      path: ["NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY"],
+      message: "NEXT_PUBLIC_SUPABASE_ANON_KEY or NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY is required",
+    });
+  }
+}
+
+const RequiredServerEnvSchema = RawServerEnvSchema
+  .superRefine(requirePublicSupabaseKey)
+  .transform(normalizePublicSupabaseKeys);
+
+const PublicSupabaseEnvSchema = z.object({
+  NEXT_PUBLIC_SUPABASE_URL: z.string().url(),
+  NEXT_PUBLIC_SUPABASE_ANON_KEY: z.string().min(1).optional(),
+  NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: z.string().min(1).optional(),
+})
+  .superRefine(requirePublicSupabaseKey)
+  .transform(normalizePublicSupabaseKeys);
 
 export type ServerEnv = z.infer<typeof RequiredServerEnvSchema>;
+export type PublicSupabaseEnv = z.infer<typeof PublicSupabaseEnvSchema>;
 export type ServerEnvInput = Record<string, string | undefined>;
 
 export type OptionalServerEnvResult =
@@ -84,6 +105,20 @@ export function getRequiredServerEnv(raw: ServerEnvInput = process.env): ServerE
 
   if (parsed.success === false) {
     throw new Error(parsed.message);
+  }
+
+  return parsed.data;
+}
+
+export function getRequiredSupabasePublicEnv(raw: ServerEnvInput = process.env): PublicSupabaseEnv {
+  const parsed = PublicSupabaseEnvSchema.safeParse(raw);
+
+  if (parsed.success === false) {
+    const details = parsed.error.issues
+      .map((issue) => String(issue.path[0]))
+      .filter(Boolean)
+      .join(", ");
+    throw new Error(`COS public Supabase environment is not configured: ${details}`);
   }
 
   return parsed.data;
