@@ -170,7 +170,7 @@ export function BriefStage({ projectSlug, jump, ping }: BriefStageProps) {
                 <span className="finding-tag">Next</span>
                 <div className="finding-body">
                   <b>{intelligence.recommended_next_step}</b>{" "}
-                  <button className="btn sm" style={{ marginTop: 6 }} onClick={() => ping("Drafting clarification request…")}>
+                  <button className="btn sm" style={{ marginTop: 6 }} disabled title="Clarification drafting is not enabled yet">
                     Request clarification
                   </button>
                 </div>

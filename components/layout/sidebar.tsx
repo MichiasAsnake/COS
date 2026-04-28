@@ -4,16 +4,16 @@ import { Spark } from "@/components/stripe-placeholder";
 import type { ProjectSummary } from "@/types/projects";
 
 const NAV_ITEMS = [
-  { id: "home",      label: "Home",         icon: Icons.home },
-  { id: "inbox",     label: "Inbox",        icon: Icons.inbox },
+  { id: "home",      label: "Home",         icon: Icons.home, enabled: false },
+  { id: "inbox",     label: "Inbox",        icon: Icons.inbox, enabled: false },
 ];
 const WS_ITEMS = [
-  { id: "projects",  label: "Projects",     icon: Icons.folder },
-  { id: "agents",    label: "Agents",       icon: Icons.agents },
-  { id: "templates", label: "Templates",    icon: Icons.tpl },
-  { id: "brand",     label: "Brand Memory", icon: Icons.brain },
-  { id: "kb",        label: "Knowledge Base", icon: Icons.book },
-  { id: "analytics", label: "Analytics",   icon: Icons.bars },
+  { id: "projects",  label: "Projects",     icon: Icons.folder, enabled: true },
+  { id: "agents",    label: "Agents",       icon: Icons.agents, enabled: false },
+  { id: "templates", label: "Templates",    icon: Icons.tpl, enabled: false },
+  { id: "brand",     label: "Brand Memory", icon: Icons.brain, enabled: false },
+  { id: "kb",        label: "Knowledge Base", icon: Icons.book, enabled: false },
+  { id: "analytics", label: "Analytics",   icon: Icons.bars, enabled: false },
 ];
 
 interface SidebarProps {
@@ -46,22 +46,24 @@ export function Sidebar({ activeNav, onNav, activeProject, onProject, projects, 
           <Icons.plus width={14} height={14} />
           {creatingProject ? "Creating…" : "New Project"}
         </span>
-        <span className="kbd">real</span>
+        <span className="kbd">backend</span>
       </button>
 
       <nav className="nav">
         {NAV_ITEMS.map((it) => (
-          <button key={it.id} className="nav-item" data-active={activeNav === it.id ? "true" : "false"} onClick={() => onNav(it.id)} type="button">
+          <button key={it.id} className="nav-item" data-active={activeNav === it.id ? "true" : "false"} onClick={() => it.enabled && onNav(it.id)} type="button" disabled={!it.enabled} title={it.enabled ? it.label : `${it.label} is not enabled yet`}>
             <span className="ico"><it.icon width={16} height={16} /></span>
             {it.label}
+            {!it.enabled && <span className="badge">Soon</span>}
           </button>
         ))}
 
         <div className="nav-section">Workspace</div>
         {WS_ITEMS.map((it) => (
-          <button key={it.id} className="nav-item" data-active={activeNav === it.id ? "true" : "false"} onClick={() => onNav(it.id)} type="button">
+          <button key={it.id} className="nav-item" data-active={activeNav === it.id ? "true" : "false"} onClick={() => it.enabled && onNav(it.id)} type="button" disabled={!it.enabled} title={it.enabled ? it.label : `${it.label} is not enabled yet`}>
             <span className="ico"><it.icon width={16} height={16} /></span>
             {it.label}
+            {!it.enabled && <span className="badge">Soon</span>}
           </button>
         ))}
 
@@ -94,7 +96,7 @@ export function Sidebar({ activeNav, onNav, activeProject, onProject, projects, 
           <div className="user-name">Jori Andre</div>
           <div className="user-role">Creative Technologist</div>
         </div>
-        <button className="icon-btn" title="Settings" type="button"><Icons.cog width={16} height={16} /></button>
+        <button className="icon-btn" title="Settings are not enabled yet" type="button" disabled><Icons.cog width={16} height={16} /></button>
       </div>
     </aside>
   );

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { handleCreateProjectRequest, handleListProjectsRequest, handleParseBriefRequest } from "@/lib/http/projects";
+import { handleCreateProjectRequest, handleListProjectsRequest, handleParseBriefRequest, handleUpdateProjectRequest } from "@/lib/http/projects";
 
 function jsonRequest(body: unknown) {
   return new Request("http://cos.local/api", {
@@ -34,6 +34,7 @@ describe("phase-two project API handlers", () => {
       name: "Q3 Launch Sprint",
       clientName: "Atlas Co",
       description: "Campaign development",
+      initialBrief: "This is a sufficiently detailed initial client brief for the launch sprint intake flow.",
     }), { createProject });
 
     expect(response.status).toBe(201);
@@ -44,7 +45,56 @@ describe("phase-two project API handlers", () => {
       name: "Q3 Launch Sprint",
       slug: "q3-launch-sprint",
       client_name: "Atlas Co",
+      initialBrief: expect.stringContaining("initial client brief"),
     }));
+  });
+
+  it("requires an initial brief when creating a project", async () => {
+    const createProject = vi.fn();
+
+    const response = await handleCreateProjectRequest(jsonRequest({
+      name: "Q3 Launch Sprint",
+      clientName: "Atlas Co",
+      description: "Campaign development",
+      initialBrief: "short",
+    }), { createProject });
+
+    expect(response.status).toBe(400);
+    expect(createProject).not.toHaveBeenCalled();
+  });
+
+  it("returns validation errors before creating incomplete projects", async () => {
+    const createProject = vi.fn();
+
+    const response = await handleCreateProjectRequest(jsonRequest({
+      name: "Q3 Launch Sprint",
+      description: "Campaign development",
+      initialBrief: "This is a sufficiently detailed initial client brief for the launch sprint intake flow.",
+    }), { createProject });
+
+    expect(response.status).toBe(400);
+    expect(createProject).not.toHaveBeenCalled();
+  });
+
+  it("updates a project and returns the persisted slug", async () => {
+    const updateProject = vi.fn(async () => ({
+      id: "project-1",
+      slug: "new-launch-name",
+      name: "New Launch Name",
+      description: "Campaign development",
+      client_name: "Atlas Co",
+    }));
+
+    const response = await handleUpdateProjectRequest(jsonRequest({ name: "New Launch Name" }), {
+      projectSlug: "atlas",
+      updateProject,
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual(expect.objectContaining({
+      project: expect.objectContaining({ slug: "new-launch-name", name: "New Launch Name" }),
+    }));
+    expect(updateProject).toHaveBeenCalledWith("atlas", { name: "New Launch Name" });
   });
 
   it("validates parse-brief requests before running the agent", async () => {

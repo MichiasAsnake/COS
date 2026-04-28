@@ -205,7 +205,7 @@ export function ReviewStage({ projectSlug, jump, ping }: ReviewStageProps) {
                 <div className="crit-body">{issue.body}</div>
                 <div className="crit-body"><b>Fix:</b> {issue.recommended_fix}</div>
                 <div className="crit-actions">
-                  <button className="btn sm" onClick={() => ping("Use Production feedback to refine this output")}>Retry via feedback</button>
+                  <button className="btn sm" disabled title="Use Production stage feedback actions to revise outputs">Retry via feedback</button>
                 </div>
               </div>
             )) : <div className="empty">No critique notes yet.</div>}

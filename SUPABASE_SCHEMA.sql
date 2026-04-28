@@ -1,4 +1,3 @@
-```sql
 create extension if not exists "pgcrypto";
 
 create table projects (
@@ -159,4 +158,3 @@ $$ language plpgsql;
 create trigger create_project_stages
 after insert on projects
 for each row execute function create_default_workflow_stages();
-```

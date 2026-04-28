@@ -177,7 +177,7 @@ export function DirectionStage({ projectSlug, jump, ping, feedback }: DirectionS
                     <span className="terr-num">0{i + 1}</span>
                     <div className="terr-title">{territory.title}</div>
                   </div>
-                  <button className="icon-btn" onClick={(e) => e.stopPropagation()} aria-label="Bookmark territory">
+                  <button className="icon-btn" onClick={(e) => e.stopPropagation()} aria-label={committed ? "Selected territory" : "Bookmarking is not enabled yet"} title={committed ? "Selected territory" : "Bookmarking is not enabled yet"} disabled={!committed}>
                     {committed ? <Icons.check width={15} height={15} /> : <Icons.bookmark width={15} height={15} />}
                   </button>
                 </div>
@@ -226,7 +226,7 @@ export function DirectionStage({ projectSlug, jump, ping, feedback }: DirectionS
             </div>
             <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
               <button className="btn sm" onClick={handleGenerate} disabled={generating || loading}><Icons.refresh width={12} height={12} /> Regenerate</button>
-              <button className="btn sm" onClick={() => ping("Forking territories lands in feedback loop phase") }><Icons.copy width={12} height={12} /> Fork to variant</button>
+              <button className="btn sm" disabled title="Forking variants is not enabled yet"><Icons.copy width={12} height={12} /> Fork to variant</button>
               <button className="btn sm" onClick={() => jump("brief")}><Icons.chevL width={12} height={12} /> Back to Brief</button>
             </div>
           </>

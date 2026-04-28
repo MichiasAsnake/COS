@@ -115,7 +115,7 @@ export function OverviewStage({ project, stages, outputs, progress, statuses, ju
         <div>
           <div className="proj-title-row">
             <div className="proj-title">{project.name}</div>
-            <button className="proj-edit" title="Rename"><Icons.edit width={14} height={14} /></button>
+            <button className="proj-edit" title="Use the topbar Rename action" disabled><Icons.edit width={14} height={14} /></button>
           </div>
           <div className="proj-desc">{project.description ?? "No project description yet. Add a brief to start building this workspace."}</div>
           <div className="chips">
@@ -156,7 +156,7 @@ export function OverviewStage({ project, stages, outputs, progress, statuses, ju
       </div>
 
       <div className="section">
-        <PipelineStepper currentStage={currentStage} onJump={jump} statuses={statuses} />
+        <PipelineStepper currentStage={currentStage} onJump={jump} statuses={statuses} project={project} stages={stages} outputs={outputs} />
       </div>
 
       <div className="section">
@@ -180,8 +180,8 @@ export function OverviewStage({ project, stages, outputs, progress, statuses, ju
                 <span style={{ position: "absolute", top: 2, left: compare ? 16 : 2, width: 14, height: 14, borderRadius: "50%", background: "white", transition: "left .15s" }} />
               </button>
             </label>
-            <button className="btn-icon"><Icons.chevL width={14} height={14} /></button>
-            <button className="btn-icon"><Icons.chevR width={14} height={14} /></button>
+            <button className="btn-icon" disabled title="Territory carousel navigation is not enabled yet"><Icons.chevL width={14} height={14} /></button>
+            <button className="btn-icon" disabled title="Territory carousel navigation is not enabled yet"><Icons.chevR width={14} height={14} /></button>
           </div>
         </div>
 
@@ -198,7 +198,7 @@ export function OverviewStage({ project, stages, outputs, progress, statuses, ju
                   <span className="terr-num">0{i + 1}</span>
                   <div className="terr-title">{t.title}</div>
                 </div>
-                <button className="icon-btn" onClick={(e) => e.stopPropagation()}><Icons.bookmark width={15} height={15} /></button>
+                <button className="icon-btn" onClick={(e) => e.stopPropagation()} disabled title="Bookmarking is not enabled yet"><Icons.bookmark width={15} height={15} /></button>
               </div>
               <div className="terr-blurb">{t.blurb}</div>
               <div className="terr-imgs">
@@ -244,7 +244,7 @@ export function OverviewStage({ project, stages, outputs, progress, statuses, ju
               No outputs of this type yet.
             </div>
           ) : filtered.map((o, i) => (
-            <button key={o.id} className="out-card" onClick={() => ping(`Opening · ${o.title}`)}>
+            <button key={o.id} className="out-card" onClick={() => ping("Output detail view is not enabled yet; use the stage tabs to inspect outputs.")}>
               <div className="out-thumb">
                 <StripePlaceholder label="" hue={60 + i * 43} seed={i * 7 + 11} />
                 <span className="out-tag">{outputTag(o)}</span>

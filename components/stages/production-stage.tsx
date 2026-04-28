@@ -247,7 +247,7 @@ export function ProductionStage({ projectSlug, jump, ping }: ProductionStageProp
               </div>
               <div className="prod-actions">
                 <button className="btn sm" onClick={(event) => { event.stopPropagation(); void applyFeedback("less_generic"); }} disabled={Boolean(feedbacking)}><Icons.refresh width={12} height={12} /> Less generic</button>
-                <button className="btn sm" onClick={(event) => { event.stopPropagation(); setSelectedOutputId(output.id); }}><Icons.copy width={12} height={12} /></button>
+                <button className="btn sm" onClick={(event) => event.stopPropagation()} disabled title="Output duplication is not enabled yet"><Icons.copy width={12} height={12} /></button>
                 <button className="btn sm" onClick={(event) => { event.stopPropagation(); jump("review"); }}>Open <Icons.arrowR width={12} height={12} /></button>
               </div>
             </div>
